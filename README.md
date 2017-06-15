@@ -6,3 +6,5 @@ The script can then run on a Raspberry Pi without a monitor and will display the
 
 The data layout is fixed at the time of this writing.
 Feel free to change it to your liking.
+
+Inspired by: http://www.raspberrypi-spy.co.uk/2012/08/20x4-lcd-module-control-using-python/
