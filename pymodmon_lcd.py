@@ -340,35 +340,36 @@ class Inout:
         import datetime
 
         ## collect current time to display
-        thistime = datetime.datetime.now().strftime("%H:%M")
+        thistime = datetime.datetime.now().strftime("%H:%M") ## get time for display
 
         ## format the data for the display before actually sending to LCD
         if (data.datawritebuffer[0][0] != None): ## at night there is no dc power
-            dc_watts = str(data.datawritebuffer[0][0]).ljust(4)
+            dc_watts = str(data.datawritebuffer[0][0]).ljust(4) ## 4 characters for DC power
         else:
             dc_watts = str(0).ljust(4)
         if (data.datawritebuffer[0][1] != None): ## at night there is no ac power
-            ac_watts = str(data.datawritebuffer[0][1]).ljust(4)
+            ac_watts = str(data.datawritebuffer[0][1]).ljust(4) ## 4 characters for AC power
         else:
             ac_watts = str(0).ljust(4)
         if (data.datawritebuffer[0][2] != None): ## at night there is no dc voltage
-            dc_volts = str(int(data.datawritebuffer[0][2])).ljust(3)
+            dc_volts = str(int(data.datawritebuffer[0][2])).ljust(3) ## disply only full volts for dc voltage, 3 characters
         else:
             dc_volts = str(0).ljust(3)
         if (data.datawritebuffer[0][3] != None): ## at night there is no yield
-            e_wh     = str(data.datawritebuffer[0][3]).ljust(5)
+            e_wh     = str(data.datawritebuffer[0][3]).ljust(5) ## yield can be maximum 5 characters (99999 Wh)
         else:
             e_wh     = str(0).ljust(5)
-        p_in_wa  = str(data.datawritebuffer[0][4])
-        p_in_w   = str(p_in_wa+" W").ljust(7)
+        p_in_wa  = str(data.datawritebuffer[0][4]) ## value for calculation
+        p_in_w   = str(p_in_wa+" W").ljust(7) ## format for display 7 characters including unit
         if (data.datawritebuffer[0][4] != None): ## at night there is no output
             p_out_w = str(data.datawritebuffer[0][5]).ljust(4)
-        else:
+        else: ## maximum power needs four characters
             p_out_w = str(0).ljust(4)
-        #   current load is a calculated value:= DC_power - Power_to_grid + Power_from_grid
-        load_wa = str(int(dc_watts) - int(p_out_w) + int(p_in_wa))
-        load_w = str(load_wa+" W").ljust(7)
+        #   current load is a calculated value:= AC_power - Power_to_grid + Power_from_grid
+        load_wa = str(int(ac_watts) - int(p_out_w) + int(p_in_wa)) ## calculate load
+        load_w = str(load_wa+" W").ljust(7) ## format load value: 7 characters including unit
 
+        ## formatting strings for output to display
         lcd_line_1 = "E_Wh:"+e_wh+" DC_V: "+dc_volts
         lcd_line_2 = "AC_W: "+ac_watts+" P>W: "+p_out_w
         lcd_line_3 = "P_in: "+p_in_w
