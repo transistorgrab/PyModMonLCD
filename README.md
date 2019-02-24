@@ -8,3 +8,5 @@ The data layout is fixed at the time of this writing.
 Feel free to change it to your liking.
 
 Inspired by: http://www.raspberrypi-spy.co.uk/2012/08/20x4-lcd-module-control-using-python/
+
+pymodmon_glcd_led.py adds support for using a UC1701 based 64x128 pixel graphic LCD
