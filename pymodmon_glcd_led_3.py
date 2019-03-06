@@ -705,7 +705,21 @@ class Inout:
                     print(thiserrormessage)
                     return  ## prevent further execution of this function
 
-            message = BinaryPayloadDecoder.fromRegisters(received.registers, byteorder=Endian.Big, wordorder=Endian.Big)
+            ## if somehow the received data is not what the interpreter expexts
+            try:
+                message = BinaryPayloadDecoder.fromRegisters(received.registers, byteorder=Endian.Big, wordorder=Endian.Big)
+                message_errorcounter = 0
+            except:
+                message_errorcounter += 1
+                thisdate = str(datetime.datetime.now()).partition('.')[0]
+                thiserrormessage = thisdate + ': Received data not valid. Error count:' + str(message_errorcounter)
+                if (gui_active):
+                    messagebox.showerror('Data Error',thiserrormessage)
+                    return  ## prevent further execution of this function
+                else:
+                    print(thiserrormessage)
+                    return  ## prevent further execution of this function
+
             ## provide the correct result depending on the defined datatype
             if thisrow[1] == 'S32':
                 interpreted = message.decode_32bit_int()
