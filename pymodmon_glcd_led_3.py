@@ -1226,7 +1226,7 @@ led = LED()
 glcd = GLCD()
 
 ## create the canvas for data presentation
-canvas = tk.Canvas()
+canvas = Canvas()
 
 ## what to do on program exit
 atexit.register(inout.cleanOnExit)
