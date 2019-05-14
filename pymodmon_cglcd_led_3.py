@@ -80,15 +80,6 @@ except:
         running_on_RPi = False
 
 #import Raspberry Pi GPIO library for direct GPIO access
-try:
-    import Adafruit_ILI9341 as TFT
-except:
-    ## if we have a GUI display an error dialog
-    try:
-        messagebox.showerror('Import Error','Adafruit_ILI9341 not found. The library is missing.')
-    except: ## if no GUI display error and exit
-        print('Adafruit_ILI9341 not found. The library is missing.')
-
 # which mode to address GPIOs (BCM: GPIO number, BOARD: connector pin number)
 GPIO.setmode(GPIO.BCM)
 
@@ -205,7 +196,6 @@ class CGLCD(object):
     def send_command(self, glcd_command):
         self.spi_cglcd.open(self.glcd_port,self.glcd_CS)
         GPIO.output(self.glcd_RS, False)  # 0 = instruction mode
-        ##spi_lcd.xfer2(lcd_command,3900000,10,8) # list of data, xfer speed, us delay, bits per word
         self.spi_cglcd.xfer2(glcd_command,3900000,10,8) # list of data, xfer speed, us delay, bits per word
         self.spi_cglcd.close()
 
@@ -213,13 +203,11 @@ class CGLCD(object):
     def send_data(self, glcd_data):
         self.spi_cglcd.open(0,0)               # /CS0 addresses LCD serial input
         GPIO.output(self.glcd_RS, True)   # 1 = data mode
-        ##spi_lcd.xfer(lcd_data,3900000,10,8) # list of data, xfer speed, us delay, bits per word
-        self.spi_cglcd.xfer2(glcd_data,3900000,10,8) # list of data, xfer speed, us delay, bits per word
+        self.spi_cglcd.xfer3(glcd_data,15600000,3,8) # list of data, xfer speed, us delay, bits per word
         self.spi_cglcd.close()
 
     # perform hardware reset for GLCD
     def reset(self):
-        ### GPIO.setup(self.glcd_RST,GPIO.OUT)  ## set pin to output
         GPIO.output(self.glcd_RST, False)   ## set output low, force reset condition
         time.sleep(0.5)                     ## wait half a second
         GPIO.output(self.glcd_RST, True)    ## release reset condition
@@ -348,24 +336,15 @@ class CGLCD(object):
                     index += 1
 
     def display(self):
-        ## send screen orientation as configured, prevents flipped screen in noisy application
-        ##! self.send_command([self.screen_mirror])
-        ##! self.send_command([self.screen_flip])
-        ##! self.send_command([self.inverse_display])
+        import datetime
+        thisdate = str(datetime.datetime.now()).partition('.')[0] ## for error message time stamp
 
         ## send image to display
-##!         for page in range (self.pages):
-            ##! self.cursor_position(page,0) # set cursor to start of current page
-##!            for column in range (self.width):
-
         ## spidev allows a maximum of 4096 bytes as argument
+        displayimage = self.lcd_image_data.copy()  ## prevent list from being altered while sending data
         self.send_command([0x2C]) ## write to RAM, that's how the pixel data arrives at the LCD
-        sendbuffer = []     ## clear send buffer
-        chunksize = 2048    ## how many bytes should be sent at once
-        for packet in range(0, len(self.lcd_image_data)//chunksize):
-            sendbuffer.append(self.lcd_image_data[(packet*chunksize):((packet*chunksize)+(chunksize))])
-        for data in range(0, len(sendbuffer)):
-            self.send_data(sendbuffer[data])
+
+        self.send_data(displayimage)
 #------------------------- GLCD class --------------------------------------------------------------
 
 ########################## Canvas class ############################################################
@@ -437,6 +416,7 @@ class Inout:
     color_or  = (0xff,0x7f,0)
     color_dgn = (0,0x9a,0)
     color_lbl = (0xca,0xda,0xff)
+    message_errorcounter = 0     ## holds the count for data receive errors
 
     import time
 
@@ -551,9 +531,9 @@ class Inout:
             p_out_w = str(data.datawritebuffer[0][5])
         else:
             p_out_w = str(0)
-        #   current load is a calculated value:= DC_power - Power_to_grid + Power_from_grid
-        load_wa   = str(int(float(ac_watts)) - int(float(p_out_w)) + int(float(p_in_wa)))
-        load_wa_i = (int(float(ac_watts)) - int(float(p_out_w)) + int(float(p_in_wa)))
+        #   current load is a calculated value:= DC_power + Power_from_grid - Power_to_grid
+        load_wa_i = (int(float(ac_watts)) + int(float(p_in_wa)) - int(float(p_out_w)))
+        load_wa   = str(load_wa_i)
         load_w    = str(load_wa+" W").ljust(7)
 
         ##   LCD layout in text mode:
@@ -795,6 +775,7 @@ class Inout:
         import datetime
 
         data.datavector = [] ## empty datavector for current values
+        thisdate = str(datetime.datetime.now()).partition('.')[0] ## for error message time stamp
 
         ## request each register from datasets, omit first row which contains only column headers
         for thisrow in data.datasets[1:]:
@@ -805,7 +786,6 @@ class Inout:
                                                      count = data.moddatatype[thisrow[1]],
                                                       unit = data.modbusid)
             except:
-                thisdate = str(datetime.datetime.now()).partition('.')[0]
                 thiserrormessage = thisdate + ': Connection not possible. Check settings or connection.'
                 if (gui_active):
                     messagebox.showerror('Connection Error',thiserrormessage)
@@ -813,15 +793,20 @@ class Inout:
                 else:
                     print(thiserrormessage)
                     return  ## prevent further execution of this function
- 
+
             ## if somehow the received data is not what the interpreter expexts
             try:
-                message = BinaryPayloadDecoder.fromRegisters(received.registers, byteorder=Endian.Big, wordorder=Endian.Big)
-                message_errorcounter = 0
+                if not received.isError():
+                    message = BinaryPayloadDecoder.fromRegisters(received.registers, byteorder=Endian.Big, wordorder=Endian.Big)
+                    self.message_errorcounter = 0
+                if received.isError():
+                    self.message_errorcounter += 1
+                    print (thisdate,' Receive error! Error count: ',str(self.message_errorcounter))
+                    return ## no valid data, do nothing
             except:
-                message_errorcounter += 1
-                thisdate = str(datetime.datetime.now()).partition('.')[0]
-                thiserrormessage = thisdate + ': Received data not valid. Error count:' + str(message_errorcounter)
+                self.message_errorcounter += 1
+                thiserrormessage = thisdate + ': Received data not valid. Error count:' + str(self.message_errorcounter)
+                print ("Received is: ", received)
                 if (gui_active):
                     messagebox.showerror('Data Error',thiserrormessage)
                     return  ## prevent further execution of this function
