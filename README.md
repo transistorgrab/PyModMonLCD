@@ -12,3 +12,5 @@ Inspired by: http://www.raspberrypi-spy.co.uk/2012/08/20x4-lcd-module-control-us
 pymodmon_glcd_led.py adds support for using a UC1701 based 64x128 pixel graphic LCD as well as to 14 LEDs via SPI shift registers(see [Schematic](./RasPi_LED_Extender.pdf)).
 
 ![GLCD Screenshot](./pymodmon_glcd.png?raw=true "GLCD Screenshot")
+
+![CGLCD Screenshot](./ColorGLCD_example.png?raw=true "GLCD Screenshot")
