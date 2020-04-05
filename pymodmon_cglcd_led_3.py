@@ -5,7 +5,7 @@
 # a small program that uses the pymodbus package to retrieve and
 # display modbus slave data.
 
-# requires: Python 3.7, pymodbus, docopt, spidev, RPi.GPIO, Adafruit_ILI9341
+# requires: Python >3.7, pymodbus, docopt, pillow, spidev, RPi.GPIO, Adafruit_ILI9341
 #
 # Date created: 2019-02-25
 # Author: André S.
@@ -353,7 +353,14 @@ class CGLCD(object):
 class Canvas(object):
     def __init__(self):
         ## provides functions for image creation for GLCD
-        from PIL import Image, ImageDraw, ImageFont
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+        except:
+            try: ## for command line showerror does not work
+                messagebox.showerror('Import Error','pillow package was not found on your system.\nPlease install it using the command:\
+                                \n"pip install pillow"')
+            except:
+                print('Import errror. pillow package was not found on your system. Please install it using the command: "pip install pillow"')
         self.canvas_width  = cglcd.width
         self.canvas_height = cglcd.height
         self.fontname   = "LCD_Solid.ttf"
@@ -757,7 +764,7 @@ class Inout:
 
         self.client.close()
         ## lambda: is required to not spawn hundreds of threads but only one that calls itself
-        self.commtimer = Timer(data.loginterval, lambda: self.runCommunication())
+        self.commtimer = Timer(float(data.loginterval), lambda: self.runCommunication())
         self.commtimer.start() ## needs to be a separate command else the timer is not cancel-able
 
     def stopCommunication(self):
@@ -1202,7 +1209,7 @@ class Gui:
                 if check_loginterval < 1:
                     raise ValueError
             except ValueError:
-                messagebox.showerror('Logger Interval Error','the value you entered seems not to be a valid logger intervall')
+                messagebox.showerror('Logger Interval Error','the value you entered seems not to be a valid logger interval')
                 return
             data.loginterval = int(self.input_loginterval.get())
 
