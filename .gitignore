@@ -1,0 +1,5 @@
+.vscode/
+*.un~
+*.ttf
+*.png
+pymodmon_cglcd_led_3_win.py
