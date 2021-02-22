@@ -2,4 +2,6 @@
 *.un~
 *.ttf
 *.png
+*.svg
+*.ods
 pymodmon_cglcd_led_3_win.py
