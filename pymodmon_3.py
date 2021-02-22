@@ -104,7 +104,8 @@ class Data(object):
                 'S32':2,
                 'U32':2,
                 'U64':4,
-                'STR32':16,
+                'STR32':16,             ## this length is acutally depending on the acutal register read
+                'STR24':12,             ## this length is acutally depending on the acutal register read
                 'S16':1,
                 'U16':1
                 }
@@ -388,6 +389,9 @@ class Inout:
                 interpreted = message.decode_64bit_uint()
             elif thisrow[1] == 'STR32':
                 interpreted = message.decode_string(32).decode("utf-8").strip('\x00') ## convert bytes to str
+            elif thisrow[1] == 'STR24':
+                interpreted = message.decode_string(24).decode("utf-8").strip('\x00') ## convert bytes to str
+                ##interpreted = message.decode_string(32).decode("latin1").strip('\x00') ## convert bytes to str
             elif thisrow[1] == 'S16':
                 interpreted = message.decode_16bit_int()
             elif thisrow[1] == 'U16':
