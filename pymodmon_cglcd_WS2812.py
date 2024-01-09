@@ -780,7 +780,7 @@ class Inout:
             ## if somehow the received data is not what the interpreter expexts
             try:
                 if not received.isError():
-                    message = BinaryPayloadDecoder.fromRegisters(received.registers, byteorder=Endian.Big, wordorder=Endian.Big)
+                    message = BinaryPayloadDecoder.fromRegisters(received.registers, byteorder="Endian.Big", wordorder="Endian.Big")
                     self.message_errorcounter = 0
                 if received.isError():
                     self.message_errorcounter += 1
