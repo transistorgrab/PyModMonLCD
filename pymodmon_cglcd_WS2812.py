@@ -637,7 +637,7 @@ class Inout:
 
             ## power direction value
             power_txt = (p_in_wa + " W") if (int(float(p_in_wa)) > 0) else (p_out_w + " W")
-            twidth, theight = canvas.font.gesize(power_txt)
+            twidth, theight = canvas.font.getsize(power_txt)
             canvas.drawing.text([290-twidth,7],power_txt,fill=self.color_rd if (int(float(p_in_wa))>0) else self.color_dgn,font=canvas.font)
 
             ## house symbol
