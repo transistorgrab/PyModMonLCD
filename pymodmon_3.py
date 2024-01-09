@@ -50,19 +50,17 @@ Options:
                           name will be appended with the current date with 
                           "%Y-%m-%d" format.
 '''
-from tkinter import messagebox
 
 ## use docopt for command line parsing and displaying help message
 try:
     import docopt
-    from docopt import docopt
 except ImportError:
     try: ## for command line showerror does not work
-        messagebox.showerror('Import Error','docopt package was not found on your system.\nPlease install it using the command:\
+        showerror('Import Error','docopt package was not found on your system.\nPlease install it using the command:\
                                 \n"pip install docopt"')
     except:
         print('Import errror. docopt package was not found on your system. Please install it using the command: "pip install docopt"')
-
+from docopt import docopt
 if __name__ == '__main__':
     arguments = docopt(__doc__, version='PyModMon 1.0')
 
@@ -71,12 +69,18 @@ try:
     from pymodbus import *
 except ImportError:
     try: ## for command line showerror does not work
-        messagebox.showerror('Import Error','pymodbus package was not found on your system.\nPlease install it using the command:\
+        showerror('Import Error','pymodbus package was not found on your system.\nPlease install it using the command:\
                                 \n"pip install pymodbus"')
     except:
         print('Import errror. pymodbus package was not found on your system. Please install it using the command: "pip install pymodbus"')
 
-
+## pymodbus changed its API with version 3.1, so we need to know what version we are importing
+import pymodbus as pm
+pm_version = pm.__version__
+import pkg_resources
+pymodbus_version = "≥3"
+if pkg_resources.parse_version(pm_version) < pkg_resources.parse_version("3.0.0"):
+    pymodbus_version = "legacy"
 
 ## enable execution of functions on program exit    
 import atexit
@@ -98,14 +102,14 @@ class Data(object):
         self.ipaddress = '10.0.0.42'    ## address of the communication target
         self.portno =   502             ## port number of the target
         self.modbusid = 3               ## bus ID of the target
-        self.manufacturer = 'Default Manufacturer' ## arbitrary string for user convenience
+        self.manufacturer = 'Default Manufacturer' ## arbitrary string for user conveniance
         self.loginterval = 5            ## how often should data be pulled from target in seconds
         self.moddatatype = {            ## allowed data types, sent from target
                 'S32':2,
                 'U32':2,
                 'U64':4,
-                'STR32':16,             ## this length is acutally depending on the acutal register read
-                'STR24':12,             ## this length is acutally depending on the acutal register read
+                'STR32':16,
+                'STR24':12,             ## this length is acutally depending on the actual register read
                 'S16':1,
                 'U16':1
                 }
@@ -126,7 +130,6 @@ class Inout:
     #  they are the equivalent to None
     MIN_SIGNED   = -2147483648
     MAX_UNSIGNED =  4294967295
-    message_errorcounter = 0
 
     ## function for testing the per command line specified configuration file
     def checkImportFile(self):
@@ -310,16 +313,17 @@ class Inout:
     ## function for starting communication with target
     #
     def runCommunication(self):
-        from pymodbus.client.sync import ModbusTcpClient as ModbusClient
+        ## pymodbus changed its API with >= 3.1. so we need to check what needs to be called
+        if pymodbus_version == "legacy":
+            from pymodbus.client.sync import ModbusTcpClient as ModbusClient
+        else:
+            from pymodbus.client import ModbusTcpClient as ModbusClient
 
         self.client = ModbusClient(host=data.ipaddress, port=data.portno)
         try:
             self.client.connect()
         except:
-            try:
-                tk.showerror('Modbus Connection Error','could not connect to target. Check your settings, please.')
-            except:
-                print('Modbus Connection Error. Could not connect to target. Check your settings, please.')
+            showerror('Modbus Connection Error','could not connect to target. Check your settings, please.')
         
         self.pollTargetData()
 
@@ -342,17 +346,23 @@ class Inout:
         import datetime
 
         data.datavector = [] ## empty datavector for current values
-        thisdate = str(datetime.datetime.now()).partition('.')[0] ## for error message time stamp
 
         ## request each register from datasets, omit first row which contains only column headers
         for thisrow in data.datasets[1:]:
             ## if the connection is somehow not possible (e.g. target not responding)
             #  show a error message instead of excepting and stopping
             try:
-                received = self.client.read_input_registers(address = int(thisrow[0]),
-                                                     count = data.moddatatype[thisrow[1]],
-                                                      unit = data.modbusid)
+                if pymodbus_version == "legacy":
+                    received = self.client.read_input_registers(address = int(thisrow[0]),
+                                                        count = data.moddatatype[thisrow[1]],
+                                                        unit = data.modbusid)
+                else:
+                    received = self.client.read_input_registers(address = int(thisrow[0]),
+                                                        count = data.moddatatype[thisrow[1]],
+                                                        slave = data.modbusid)
+
             except:
+                thisdate = str(datetime.datetime.now()).partition('.')[0]
                 thiserrormessage = thisdate + ': Connection not possible. Check settings or connection.'
                 if (gui_active):
                     messagebox.showerror('Connection Error',thiserrormessage)
@@ -361,25 +371,7 @@ class Inout:
                     print(thiserrormessage)
                     return  ## prevent further execution of this function
 
-            ## if somehow the received data is not what the interpreter expexts
-            try:
-                if not received.isError():
-                    message = BinaryPayloadDecoder.fromRegisters(received.registers, byteorder=Endian.Big, wordorder=Endian.Big)
-                    self.message_errorcounter = 0
-                if received.isError():
-                    self.message_errorcounter += 1
-                    print (thisdate,' Receive error! Error count: ', str(self.message_errorcounter))
-                    return ## no valid data, do nothing
-            except:
-                self.message_errorcounter += 1
-                thiserrormessage = thisdate + ': Received data not valid. Error count: ' + str(self.message_errorcounter)
-                if (gui_active):
-                    messagebox.showerror('Data Error',thiserrormessage)
-                    return  ## prevent further execution of this function
-                else:
-                    print(thiserrormessage)
-                    return  ## prevent further execution of this function
-
+            message = BinaryPayloadDecoder.fromRegisters(received.registers, byteorder=Endian.Big, wordorder=Endian.Big)
             ## provide the correct result depending on the defined datatype
             if thisrow[1] == 'S32':
                 interpreted = message.decode_32bit_int()
@@ -389,9 +381,8 @@ class Inout:
                 interpreted = message.decode_64bit_uint()
             elif thisrow[1] == 'STR32':
                 interpreted = message.decode_string(32).decode("utf-8").strip('\x00') ## convert bytes to str
-            elif thisrow[1] == 'STR24':
+            elif thisrow[1] == 'STR24': ## workaround when SMA shorted the length of a string register to 24 bytes
                 interpreted = message.decode_string(24).decode("utf-8").strip('\x00') ## convert bytes to str
-                ##interpreted = message.decode_string(32).decode("latin1").strip('\x00') ## convert bytes to str
             elif thisrow[1] == 'S16':
                 interpreted = message.decode_16bit_int()
             elif thisrow[1] == 'U16':
@@ -474,41 +465,41 @@ class Gui:
         master.title('Python Modbus Monitor')
         master.minsize(width=550, height=450)
         master.geometry("550x550")  ## scale window a bit bigger for more data lines
-        self.settingscanvas = tk.Canvas(master,bg="yellow",highlightthickness=0)
+        self.settingscanvas = Canvas(master,bg="yellow",highlightthickness=0)
         self.settingscanvas.pack(side='top',anchor='nw',expand=False,fill='x')
 
         ## make the contents of settingscanvas fit the window width
-        tk.Grid.columnconfigure(self.settingscanvas,0,weight = 1)
+        Grid.columnconfigure(self.settingscanvas,0,weight = 1)
 
         ## create window containers
 
         ## frame for the config file and data logger file display
-        filesframe = tk.Frame(self.settingscanvas,bd=1,relief='groove')
+        filesframe = Frame(self.settingscanvas,bd=1,relief='groove')
         filesframe.columnconfigure(1,weight=1) ## set 2nd column to be auto-stretched when window is resized
         filesframe.grid(sticky = 'EW')
 
         ## frame for the settings of the communication parameters
-        self.settingsframe = tk.Frame(self.settingscanvas,bd=1,relief='groove')
+        self.settingsframe = Frame(self.settingscanvas,bd=1,relief='groove')
         self.settingsframe.grid(sticky = 'EW')
 
         ## frame for the controls for starting and stopping configuration
-        controlframe = tk.Frame(self.settingscanvas,bd=1,relief='groove')
+        controlframe = Frame(self.settingscanvas,bd=1,relief='groove')
         controlframe.grid(sticky = 'EW')
 
         ## create Menu
-        menubar = tk.Menu(master)
-        filemenu = tk.Menu(menubar, tearoff=0)
+        menubar = Menu(master)
+        filemenu = Menu(menubar, tearoff=0)
         filemenu.add_command(label='Import Configuration File…',command=self.selectImportFile)
         filemenu.add_command(label='Export Configuration File…',command=self.selectExportFile)
         filemenu.add_command(label='Set Logger Data File…',command=self.selectLoggerDataFile)
         filemenu.add_command(label='Save Current Configuration',command=inout.writeExportFile)
         filemenu.add_command(label='Exit',command=self.closeWindow)
 
-        toolmenu = tk.Menu(menubar, tearoff=0)
+        toolmenu = Menu(menubar, tearoff=0)
         toolmenu.add_command(label='Data Settings…',command=self.dataSettings)
         toolmenu.add_command(label='Print Config Data',command=inout.printConfig)
         
-        helpmenu = tk.Menu(menubar, tearoff=0)
+        helpmenu = Menu(menubar, tearoff=0)
         helpmenu.add_command(label='About…',command=self.aboutDialog)
         
         menubar.add_cascade(label='File', menu=filemenu)
@@ -520,92 +511,92 @@ class Gui:
 
         ## input mask for configuration file
         #
-        tk.Label(filesframe, text='Configuration File:').grid(row=0,sticky='E')
+        Label(filesframe, text='Configuration File:').grid(row=0,sticky='E')
 
-        self.input_inifilename = tk.Entry(filesframe, width = 40)
+        self.input_inifilename = Entry(filesframe, width = 40)
         self.input_inifilename.bind('<Return>',self.getInputFile)   ## enable file name to be set by [Enter] or [Return]
         self.input_inifilename.grid(row=0,column=1,sticky='EW')     ## make input field streching with window
         
-        tk.Button(filesframe,text='…',command=(self.selectImportFile)).grid(row=0,column=2,sticky='W') ## opens dialog to choose file from
+        Button(filesframe,text='…',command=(self.selectImportFile)).grid(row=0,column=2,sticky='W') ## opens dialog to choose file from
 
         ## input mask for data logger file
         #
-        tk.Label(filesframe, text='Data Logger File:').grid(row=1,sticky='E')
+        Label(filesframe, text='Data Logger File:').grid(row=1,sticky='E')
 
-        self.input_logfilename = tk.Entry(filesframe, width = 40)
+        self.input_logfilename = Entry(filesframe, width = 40)
         self.input_logfilename.bind('<Return>',self.setLogFile)     ## enable file name to be set by [Enter] or [Return]
         self.input_logfilename.grid(row=1,column=1,sticky='EW')     ## make input field streching with window
 
-        tk.Button(filesframe,text='…',command=(self.selectLoggerDataFile)).grid(row=1,column=2,sticky='W') ## opens dialog to choose file from
+        Button(filesframe,text='…',command=(self.selectLoggerDataFile)).grid(row=1,column=2,sticky='W') ## opens dialog to choose file from
 
         ## enable daily log option in GUI, has no own action, will be regarded during log write
-        self.checked_daily   = tk.IntVar()
-        self.checkManageData = tk.Checkbutton(filesframe,
+        self.checked_daily = IntVar()
+        self.checkManageData=Checkbutton(filesframe,
                                          text='Create daily log file',
                                          variable=self.checked_daily
                                          )
         self.checkManageData.grid(row=2,column=0,columnspan=3)
 
-        tk.Button(filesframe,text='⟲ Re-Read Configuration', command=(self.displaySettings)).grid(row=3,column=0,sticky='W') ## triggers re-read of the configuration file
-        tk.Button(filesframe,text='⤓ Save Current Configuration', command=(inout.writeExportFile)).grid(row=3,column=1,sticky='W') ## triggers re-read of the configuration file
+        Button(filesframe,text='⟲ Re-Read Configuration', command=(self.displaySettings)).grid(row=3,column=0,sticky='W') ## triggers re-read of the configuration file
+        Button(filesframe,text='⤓ Save Current Configuration', command=(inout.writeExportFile)).grid(row=3,column=1,sticky='W') ## triggers re-read of the configuration file
 
         ## buttons for starting and stopping data retrieval from the addressed target
         #
 
         ## Button for starting communication and starting writing to logger file
-        self.commButton = tk.Button(controlframe,text='▶ Start Communication',bg='lightblue', command=self.startCommunication)
+        self.commButton = Button(controlframe,text='▶ Start Communication',bg='lightblue', command=self.startCommunication)
         self.commButton.grid(row=0,column=1,sticky='W') 
 
         ## fields for configuring the data connection
         #
-        tk.Label(self.settingsframe, text='Communication Connection Settings', font='-weight bold').grid(columnspan=4, sticky='W')
-        tk.Label(self.settingsframe, text='Current Values').grid(row=1,column=1)
-        tk.Label(self.settingsframe, text='New Values').grid(row=1,column=2)
+        Label(self.settingsframe, text='Communication Connection Settings', font='-weight bold').grid(columnspan=4, sticky='W')
+        Label(self.settingsframe, text='Current Values').grid(row=1,column=1)
+        Label(self.settingsframe, text='New Values').grid(row=1,column=2)
 
-        tk.Label(self.settingsframe, text='Target IP Address:').grid(row=2,column=0,sticky = 'E')
-        tk.Label(self.settingsframe, text='Port No.:').grid(row=3,column=0,sticky = 'E')
-        tk.Label(self.settingsframe, text='Modbus Unit ID:').grid(row=4,column=0,sticky = 'E')
-        tk.Label(self.settingsframe, text='Manufacturer:').grid(row=5,column=0,sticky = 'E')
-        tk.Label(self.settingsframe, text='Log Interval[s]:').grid(row=6,column=0,sticky = 'E')
-        tk.Button(self.settingsframe,text='⮴ Update Settings',bg='lightgreen',command=(self.updateCommSettings)).grid(row=7,column=2, sticky='W')
+        Label(self.settingsframe, text='Target IP Address:').grid(row=2,column=0,sticky = 'E')
+        Label(self.settingsframe, text='Port No.:').grid(row=3,column=0,sticky = 'E')
+        Label(self.settingsframe, text='Modbus Unit ID:').grid(row=4,column=0,sticky = 'E')
+        Label(self.settingsframe, text='Manufacturer:').grid(row=5,column=0,sticky = 'E')
+        Label(self.settingsframe, text='Log Interval[s]:').grid(row=6,column=0,sticky = 'E')
+        Button(self.settingsframe,text='⮴ Update Settings',bg='lightgreen',command=(self.updateCommSettings)).grid(row=7,column=2, sticky='W')
 
         ## frame for entering and displaying the data objects
-        self.datasettingsframe = tk.Frame(self.settingscanvas,bd=1,relief='groove')
+        self.datasettingsframe = Frame(self.settingscanvas,bd=1,relief='groove')
         self.datasettingsframe.columnconfigure(3,weight=1) ## make description field fit the window
         self.datasettingsframe.grid(sticky = 'EW')
 
         ## table with data objects to display and the received data
-        tk.Label(self.datasettingsframe, text='Target Data', font='-weight bold').grid(columnspan=4, sticky='W')
-        tk.Label(self.datasettingsframe, text='Addr.').grid(row=1,column=0)
-        tk.Label(self.datasettingsframe, text='Type').grid(row=1,column=1)
-        tk.Label(self.datasettingsframe, text='Format').grid(row=1,column=2)
-        tk.Label(self.datasettingsframe, text='Description').grid(row=1,column=3)
-        tk.Label(self.datasettingsframe, text='Unit').grid(row=1,column=4)
-        self.input_modaddress = tk.Entry(self.datasettingsframe,width=7)
+        Label(self.datasettingsframe, text='Target Data', font='-weight bold').grid(columnspan=4, sticky='W')
+        Label(self.datasettingsframe, text='Addr.').grid(row=1,column=0)
+        Label(self.datasettingsframe, text='Type').grid(row=1,column=1)
+        Label(self.datasettingsframe, text='Format').grid(row=1,column=2)
+        Label(self.datasettingsframe, text='Description').grid(row=1,column=3)
+        Label(self.datasettingsframe, text='Unit').grid(row=1,column=4)
+        self.input_modaddress=Entry(self.datasettingsframe,width=7)
         self.input_modaddress.grid(row=2,column=0)
 
-        self.input_moddatatype = tk.StringVar()
+        self.input_moddatatype = StringVar()
         self.input_moddatatype.set(list(data.moddatatype.keys())[0])#[0])
-        self.choice_moddatatype = tk.OptionMenu(self.datasettingsframe,self.input_moddatatype,*data.moddatatype)
+        self.choice_moddatatype=OptionMenu(self.datasettingsframe,self.input_moddatatype,*data.moddatatype)
         self.choice_moddatatype.grid(row=2,column=1)
 
-        self.input_dataformat = tk.StringVar()
+        self.input_dataformat = StringVar()
         self.input_dataformat.set(None)
-        self.choice_moddatatype = tk.OptionMenu(self.datasettingsframe,self.input_dataformat,*data.dataformat)
+        self.choice_moddatatype=OptionMenu(self.datasettingsframe,self.input_dataformat,*data.dataformat)
         self.choice_moddatatype.grid(row=2,column=2)
 
-        self.input_description = tk.Entry(self.datasettingsframe,width=35)
+        self.input_description=Entry(self.datasettingsframe,width=35)
         self.input_description.grid(row=2,column=3,sticky='ew')
 
-        self.input_dataunit = tk.Entry(self.datasettingsframe,width=5)
+        self.input_dataunit=Entry(self.datasettingsframe,width=5)
         self.input_dataunit.grid(row=2,column=4)
 
-        tk.Button(self.datasettingsframe,text='+',font='-weight bold',bg='lightyellow',command=(self.addNewDataset)).grid(row=2,column=6)
+        Button(self.datasettingsframe,text='+',font='-weight bold',bg='lightyellow',command=(self.addNewDataset)).grid(row=2,column=6)
         
         ## checkbutton to enable manipulation of the entered data.
         #  this is slow, therefore not enabled by default. Also it alters the display layout.
-        self.checked_manage = tk.IntVar()
-        self.checkManageData = tk.Checkbutton(self.datasettingsframe,
+        self.checked_manage = IntVar()
+        self.checkManageData=Checkbutton(self.datasettingsframe,
                                          text='Manage data sets',
                                          variable=self.checked_manage,
                                          command=self.displayDatasets,
@@ -613,21 +604,21 @@ class Gui:
         self.checkManageData.grid(row=3,column=0,columnspan=3)
 
         ## canvas for displaying monitored data
-        self.datacanvas = tk.Canvas(master,bd=1,bg="green",highlightthickness=0)
+        self.datacanvas = Canvas(master,bd=1,bg="green",highlightthickness=0)
         self.datacanvas.pack(anchor='sw',side='top',expand=True,fill='both')
         ## frame that holds all data to display. the static data table and the polled data
-        self.dataframe = tk.Frame(self.datacanvas)
+        self.dataframe = Frame(self.datacanvas)
         self.dataframe.pack(side='left',expand=True,fill='both')
         ## frame for static data table
-        self.datadisplayframe = tk.Frame(self.dataframe,bd=1,relief='groove')
+        self.datadisplayframe = Frame(self.dataframe,bd=1,relief='groove')
         #self.datadisplayframe = Frame(self.datacanvas,bd=1,relief='groove')
         self.datadisplayframe.pack(side='left', anchor='nw',expand=True,fill='both')
         ## frame for data from target
-        self.targetdataframe = tk.Frame(self.dataframe,bg='white',relief='groove',bd=1)
+        self.targetdataframe = Frame(self.dataframe,bg='white',relief='groove',bd=1)
         self.targetdataframe.pack(side='left', anchor='nw',expand=True,fill='both')
         #self.targetdataframe.grid(column=1, row=0)
         ## add scrollbar for many data rows
-        self.datascrollbar = tk.Scrollbar(self.datacanvas, orient='vertical', command=self.datacanvas.yview)
+        self.datascrollbar = Scrollbar(self.datacanvas, orient='vertical', command=self.datacanvas.yview)
         self.datascrollbar.pack(side='right',fill='y')
         #self.datascrollbar = Scrollbar(self.datacanvas, orient='vertical', command=self.datacanvas.yview)
         self.datacanvas.configure(yscrollcommand=self.datascrollbar.set)
@@ -654,11 +645,11 @@ class Gui:
         self.displayDatasets()
 
         ## update logfile display
-        self.input_logfilename.delete(0,tk.END)
+        self.input_logfilename.delete(0,END)
         self.input_logfilename.insert(0,data.logfilename)
 
         ## update displayed filename in entry field
-        self.input_inifilename.delete(0,tk.END)
+        self.input_inifilename.delete(0,END)
         self.input_inifilename.insert(0,data.inifilename)
 
     def displayDatasets(self):
@@ -667,9 +658,9 @@ class Gui:
             widget.destroy()
 
         if (self.checked_manage.get()):
-            tk.Label(self.datadisplayframe,text='Up').grid(row=0,column=0)
-            tk.Label(self.datadisplayframe,text='Down').grid(row=0,column=1)
-            tk.Label(self.datadisplayframe,text='Delete').grid(row=0,column=2)
+            Label(self.datadisplayframe,text='Up').grid(row=0,column=0)
+            Label(self.datadisplayframe,text='Down').grid(row=0,column=1)
+            Label(self.datadisplayframe,text='Delete').grid(row=0,column=2)
 
         thisdata = '' ## make local variable known
         for thisdata in data.datasets:
@@ -677,28 +668,28 @@ class Gui:
             if (self.checked_manage.get()):
                 ## add some buttons to change order of items and also to delete them
                 if (counter > 1): ## first dataset cannot be moved up
-                    buttonUp = tk.Button(self.datadisplayframe,
+                    buttonUp=Button(self.datadisplayframe,
                                     text='↑',
                                     command=lambda i=counter:(self.moveDatasetUp(i)))
                     buttonUp.grid(row=(counter),column = 0)
                 if ((counter > 0) and (counter != (len(data.datasets)-1))): ## last dataset cannot be moved down
-                    buttonDown = tk.Button(self.datadisplayframe,
+                    buttonDown=Button(self.datadisplayframe,
                                       text='↓',
                                       command=lambda i=counter:(self.moveDatasetDown(i)))
                     buttonDown.grid(row=(counter),column = 1)
                 if (counter > 0): ## do not remove dataset [0]
-                    buttonDelete = tk.Button(self.datadisplayframe,
+                    buttonDelete=Button(self.datadisplayframe,
                                         text='-',
                                         command=lambda i=counter:(self.deleteDataset(i)))
                     buttonDelete.grid(row=(counter),column = 2)
 
             ## add the currently stored data for the dataset
-            tk.Label(self.datadisplayframe,width=3,text=counter).grid(row=(counter),column=3)
-            tk.Label(self.datadisplayframe,width=6,text=thisdata[0]).grid(row=(counter),column=4)
-            tk.Label(self.datadisplayframe,width=7,text=thisdata[1]).grid(row=(counter),column=5)
-            tk.Label(self.datadisplayframe,width=7,text=thisdata[2]).grid(row=(counter),column=6)
-            tk.Label(self.datadisplayframe,width=25,text=thisdata[3]).grid(row=(counter),column=7,sticky='ew')
-            tk.Label(self.datadisplayframe,width=6,text=thisdata[4]).grid(row=(counter),column=8)
+            Label(self.datadisplayframe,width=3,text=counter).grid(row=(counter),column=3)
+            Label(self.datadisplayframe,width=6,text=thisdata[0]).grid(row=(counter),column=4)
+            Label(self.datadisplayframe,width=7,text=thisdata[1]).grid(row=(counter),column=5)
+            Label(self.datadisplayframe,width=7,text=thisdata[2]).grid(row=(counter),column=6)
+            Label(self.datadisplayframe,width=25,text=thisdata[3]).grid(row=(counter),column=7,sticky='ew')
+            Label(self.datadisplayframe,width=6,text=thisdata[4]).grid(row=(counter),column=8)
 
         self.update_data_layout()
    
@@ -721,33 +712,33 @@ class Gui:
         self.displayDatasets()
 
     def displayCommSettings(self):
-        self.current_ipaddress = tk.Label(self.settingsframe, text=data.ipaddress, bg='white')
+        self.current_ipaddress = Label(self.settingsframe, text=data.ipaddress, bg='white')
         self.current_ipaddress.grid (row=2,column=1,sticky='EW')
-        self.input_ipaddress = tk.Entry(self.settingsframe, width=15, fg='blue')
-        self.input_ipaddress.grid(row=2,column=2, sticky = 'W') # needs to be on a separate line for variable to work
+        self.input_ipaddress = Entry(self.settingsframe, width=15, fg='blue')
+        self.input_ipaddress.grid(row=2,column=2, sticky = 'W') # needs to be on a seperate line for variable to work
         self.input_ipaddress.bind('<Return>',self.updateCommSettings) ## enable the Entry to update without button click
 
-        self.current_portno = tk.Label(self.settingsframe, text=data.portno, bg='white')
+        self.current_portno = Label(self.settingsframe, text=data.portno, bg='white')
         self.current_portno.grid (row=3,column=1,sticky='EW')
-        self.input_portno = tk.Entry(self.settingsframe, width=5, fg='blue')
+        self.input_portno = Entry(self.settingsframe, width=5, fg='blue')
         self.input_portno.grid(row=3,column=2, sticky = 'W')
         self.input_portno.bind('<Return>',self.updateCommSettings) ## update without button click
 
-        self.current_modbusid = tk.Label(self.settingsframe, text=data.modbusid, bg='white')
+        self.current_modbusid = Label(self.settingsframe, text=data.modbusid, bg='white')
         self.current_modbusid.grid (row=4,column=1,sticky='EW')
-        self.input_modbusid = tk.Entry(self.settingsframe, width=5, fg='blue')
+        self.input_modbusid = Entry(self.settingsframe, width=5, fg='blue')
         self.input_modbusid.grid(row=4,column=2, sticky = 'W')
         self.input_modbusid.bind('<Return>',self.updateCommSettings) ## update without button click
 
-        self.current_manufacturer = tk.Label(self.settingsframe, text=data.manufacturer, bg='white')
+        self.current_manufacturer = Label(self.settingsframe, text=data.manufacturer, bg='white')
         self.current_manufacturer.grid (row=5,column=1,sticky='EW')
-        self.input_manufacturer = tk.Entry(self.settingsframe, width=25, fg='blue')
+        self.input_manufacturer = Entry(self.settingsframe, width=25, fg='blue')
         self.input_manufacturer.grid(row=5,column=2, sticky = 'W')
         self.input_manufacturer.bind('<Return>',self.updateCommSettings) ## update without button click
 
-        self.current_loginterval = tk.Label(self.settingsframe, text=data.loginterval, bg='white')
+        self.current_loginterval = Label(self.settingsframe, text=data.loginterval, bg='white')
         self.current_loginterval.grid (row=6,column=1,sticky='EW')
-        self.input_loginterval = tk.Entry(self.settingsframe, width=3, fg='blue')
+        self.input_loginterval = Entry(self.settingsframe, width=3, fg='blue')
         self.input_loginterval.grid(row=6,column=2, sticky = 'W')
         self.input_loginterval.bind('<Return>',self.updateCommSettings) ## update without button click
         
@@ -821,7 +812,7 @@ class Gui:
         data.inifilename = filedialog.askopenfilename(title = 'Choose Configuration File',defaultextension='.ini',filetypes=[('Configuration file','*.ini'), ('All files','*.*')])
 
         ## update displayed filename in entry field
-        self.input_inifilename.delete(0,tk.END)
+        self.input_inifilename.delete(0,END)
         self.input_inifilename.insert(0,data.inifilename)
 
         self.displaySettings()
@@ -850,7 +841,7 @@ class Gui:
                                                   filetypes=[('Configuration file','*.ini'), ('All files','*.*')])
 
         ## update displayed filename in entry field
-        self.input_inifilename.delete(0,tk.END)
+        self.input_inifilename.delete(0,END)
         self.input_inifilename.insert(0,data.inifilename)
 
         inout.writeExportFile()
@@ -859,7 +850,7 @@ class Gui:
     #
     def selectLoggerDataFile(self):
         data.logfilename = filedialog.asksaveasfilename(initialfile = data.logfilename, title = 'Choose File for Logger Data', defaultextension='.csv',filetypes=[('CSV file','*.csv'), ('All files','*.*')])
-        self.input_logfilename.delete(0,tk.END)
+        self.input_logfilename.delete(0,END)
         self.input_logfilename.insert(0,data.logfilename)
 
     ## function for updating the current received data on display
@@ -870,10 +861,10 @@ class Gui:
         for displayed in self.targetdataframe.winfo_children():
             displayed.destroy()
         ## display new data
-        tk.Label(self.targetdataframe,text='Value').grid(row=0,column=0)
+        Label(self.targetdataframe,text='Value').grid(row=0,column=0)
         for thisdata in data.datavector:
             ## send data to display table
-            tk.Label(self.targetdataframe,text=thisdata,bg='white').grid(column=0,sticky='e')
+            Label(self.targetdataframe,text=thisdata,bg='white').grid(column=0,sticky='e')
 
     ## function for setting program preferences (if needed)
     #
@@ -930,11 +921,11 @@ atexit.register(inout.cleanOnExit)
 gui_active = 0
 if (arguments['--nogui'] == False):
     ## load graphical interface library
-    import tkinter as tk
+    from tkinter import *
     from tkinter import messagebox
     from tkinter import filedialog
     try: ## if the program was called from command line without parameters
-        window = tk.Tk()
+        window = Tk()
         ## create window container
         gui = Gui(window)
         gui_active = 1
@@ -942,9 +933,9 @@ if (arguments['--nogui'] == False):
             inout.checkImportFile()
             gui.displaySettings()
     
-        tk.mainloop()
+        mainloop()
         exit() ## if quitting from GUI do not proceed further down to command line handling
-    except tk.TclError:
+    except TclError:
         ## check if one of the required command line parameters is set
         if ((arguments['--inifile'] == None) and (arguments['--ip'] == None)):
             print('Error. No graphical interface found. Try "python pymodmon.py -h" for help.')

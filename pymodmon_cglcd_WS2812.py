@@ -59,6 +59,14 @@ except ImportError:
     except:
         print('Import errror. pymodbus package was not found on your system. Please install it using the command: "pip install pymodbus"')
 
+## pymodbus changed its API with version 3.1, so we need to know what version we are importing
+import pymodbus as pm
+pm_version = pm.__version__
+import pkg_resources
+pymodbus_version = "≥3"
+if pkg_resources.parse_version(pm_version) < pkg_resources.parse_version("3.0.0"):
+    pymodbus_version = "legacy"
+
 ## spidev for SPI communication
 try:
     import spidev
@@ -488,7 +496,10 @@ class Inout:
             e_wh     = str(data.datawritebuffer[0][3])
         else:
             e_wh     = str(0)
-        p_in_wa  = str(data.datawritebuffer[0][4])
+        if (data.datawritebuffer[0][4] != None):  ## there is no power if connection to energy meter is lost
+            p_in_wa  = str(data.datawritebuffer[0][4])
+        else:
+            p_in_wa  = str(0)
         p_in_w   = str(p_in_wa+" W")
         if (data.datawritebuffer[0][4] != None): ## at night there is no output
             p_out_w = str(data.datawritebuffer[0][5])
@@ -710,7 +721,11 @@ class Inout:
     ## function for starting communication with target
     #
     def runCommunication(self):
-        from pymodbus.client.sync import ModbusTcpClient as ModbusClient
+        ## pymodbus changed its API with >= 3.1. so we need to check what needs to be called
+        if pymodbus_version == "legacy":
+            from pymodbus.client.sync import ModbusTcpClient as ModbusClient
+        else:
+            from pymodbus.client import ModbusTcpClient as ModbusClient
 
         self.client = ModbusClient(host=data.ipaddress, port=data.portno)
         try:
