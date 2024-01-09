@@ -400,7 +400,7 @@ class Inout:
         except:
             ## if we have a GUI display an error dialog
             try:
-                showerror('Import Error','The specified configuration file was not found.')
+                messagebox.showerror('Import Error','The specified configuration file was not found.')
                 return
             except: ## if no GUI display error and exit
                 print('Configuration file error. A file with that name seems not to exist, please check.')
@@ -409,7 +409,7 @@ class Inout:
             inout.readImportFile()
         except:
             try:
-                showerror('Import Error','Could not read the configuration file. Please check file path and/or file.')
+                messagebox.showerror('Import Error','Could not read the configuration file. Please check file path and/or file.')
                 return
             except:
                 print('Could not read configuration file. Please check file path and/or file.')
@@ -440,7 +440,7 @@ class Inout:
         ## if the dialog was closed with no file selected ('cancel') just return
         if (data.inifilename == None):
             try: ## if running in command line no window can be displayed
-                showerror('Configuration File Error','no file name given, please check.')
+                messagebox.showerror('Configuration File Error','no file name given, please check.')
             except:
                 print('Configuration file error, no file name given, please check.')
             return
@@ -449,7 +449,7 @@ class Inout:
             inifile = io.open(data.inifilename,'w',encoding="utf-8")
         except:
             try: ## if running in command line no window can be displayed
-                showerror('Configuration File Error','a file with that name seems not to exist, please check.')
+                messagebox.showerror('Configuration File Error','a file with that name seems not to exist, please check.')
             except:
                 print('Configuration file error, a file with that name seems not to exist, please check.')
             gui.selectExportFile()
@@ -735,6 +735,7 @@ class Inout:
                 tk.showerror('Modbus Connection Error','could not connect to target. Check your settings, please.')
             except:
                 print('Modbus Connection Error. Could not connect to target. Check your settings, please.')
+                print('Settings: IP: '+str(data.ipaddress)+" Port: "+str(data.portno))
 
         self.pollTargetData()
 
@@ -765,9 +766,15 @@ class Inout:
             ## if the connection is somehow not possible (e.g. target not responding)
             #  show a error message instead of excepting and stopping
             try:
-                received = self.client.read_input_registers(address = int(thisrow[0]),
-                                                     count = data.moddatatype[thisrow[1]],
-                                                      unit = data.modbusid)
+                if pymodbus_version == "legacy":
+                    received = self.client.read_input_registers(address = int(thisrow[0]),
+                                                        count = data.moddatatype[thisrow[1]],
+                                                        unit = data.modbusid)
+                else:
+                    received = self.client.read_input_registers(address = int(thisrow[0]),
+                                                        count = data.moddatatype[thisrow[1]],
+                                                        slave = data.modbusid) ## "unit" was renamed to "slave"
+
             except:
                 thiserrormessage = thisdate + ': Connection not possible. Check settings or connection.'
                 if (gui_active):
@@ -782,7 +789,7 @@ class Inout:
                 if not received.isError():
                     message = BinaryPayloadDecoder.fromRegisters(received.registers, byteorder=Endian.BIG, wordorder=Endian.BIG)
                     self.message_errorcounter = 0
-                if received.isError():
+                else:
                     self.message_errorcounter += 1
                     print (thisdate,' Receive error! Error count: ',str(self.message_errorcounter))
                     return ## no valid data, do nothing
