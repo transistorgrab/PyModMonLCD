@@ -637,7 +637,7 @@ class Inout:
 
             ## power direction value
             power_txt = (p_in_wa + " W") if (int(float(p_in_wa)) > 0) else (p_out_w + " W")
-            twidth, theight = canvas.drawing.textlength(power_txt)
+            twidth, theight = canvas.font.gesize(power_txt)
             canvas.drawing.text([290-twidth,7],power_txt,fill=self.color_rd if (int(float(p_in_wa))>0) else self.color_dgn,font=canvas.font)
 
             ## house symbol
@@ -652,7 +652,7 @@ class Inout:
 
             ## current load
             load_txt = (load_wa+" W")
-            twidth, theight = canvas.drawing.textlength(load_txt, font=canvas.bigfont) ## get text area for background fill
+            twidth, theight = canvas.bigfont.getsize(load_txt) ## get text area for background fill
             graph_x_center=(bbox[0]+bbox[2])/2      ## calculate center for centered placement
             canvas.drawing.rectangle([graph_x_center-twidth/2-1,180,graph_x_center+twidth/2,180+theight-1],fill=self.color_lbl) ## background fill
             canvas.drawing.text([graph_x_center-twidth/2,180],load_txt,fill=self.color_bk,outline=self.color_bk,font=canvas.bigfont) ## place load value on graph
