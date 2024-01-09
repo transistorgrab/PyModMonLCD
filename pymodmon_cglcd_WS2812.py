@@ -471,6 +471,8 @@ class Inout:
 ## function for writing to LCD and LED
 
     def writeLoggerDataLCD(self):
+        from PIL import Image, ImageDraw, ImageFont
+
         import datetime
         import math ## required for Pi and log10 function
 
@@ -637,7 +639,8 @@ class Inout:
 
             ## power direction value
             power_txt = (p_in_wa + " W") if (int(float(p_in_wa)) > 0) else (p_out_w + " W")
-            twidth, theight = canvas.font.getsize(power_txt)
+            tbox = canvas.drawing.textbbox((0,0),power_txt,font=canvas.font)
+            twidth, theight = (tbox[2],tbox[3]) ## with offset at 0,0 the right and bottom values give widht and height
             canvas.drawing.text([290-twidth,7],power_txt,fill=self.color_rd if (int(float(p_in_wa))>0) else self.color_dgn,font=canvas.font)
 
             ## house symbol
@@ -652,7 +655,8 @@ class Inout:
 
             ## current load
             load_txt = (load_wa+" W")
-            twidth, theight = canvas.bigfont.getsize(load_txt) ## get text area for background fill
+            tbox = canvas.drawing.textbbox((0,0),load_txt) ## get text area for background fill
+            twidth, theight = (tbox[2],tbox[3])
             graph_x_center=(bbox[0]+bbox[2])/2      ## calculate center for centered placement
             canvas.drawing.rectangle([graph_x_center-twidth/2-1,180,graph_x_center+twidth/2,180+theight-1],fill=self.color_lbl) ## background fill
             canvas.drawing.text([graph_x_center-twidth/2,180],load_txt,fill=self.color_bk,outline=self.color_bk,font=canvas.bigfont) ## place load value on graph
