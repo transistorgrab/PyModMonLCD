@@ -50,6 +50,8 @@ Options:
                           name will be appended with the current date with 
                           "%Y-%m-%d" format.
 '''
+debug = True
+from tkinter.messagebox import showerror
 
 ## use docopt for command line parsing and displaying help message
 try:
@@ -81,6 +83,10 @@ import pkg_resources
 pymodbus_version = "≥3"
 if pkg_resources.parse_version(pm_version) < pkg_resources.parse_version("3.0.0"):
     pymodbus_version = "legacy"
+## API changed in 3.10
+if pkg_resources.parse_version(pm_version) >= pkg_resources.parse_version("3.10.0"):
+    pymodbus_version = "310+"
+
 
 ## enable execution of functions on program exit    
 import atexit
@@ -317,6 +323,7 @@ class Inout:
         if pymodbus_version == "legacy":
             from pymodbus.client.sync import ModbusTcpClient as ModbusClient
         else:
+            print(f"connecting with 3.10+ to host {data.ipaddress} on port {data.portno}…") if debug else ()
             from pymodbus.client import ModbusTcpClient as ModbusClient
 
         self.client = ModbusClient(host=data.ipaddress, port=data.portno)
@@ -341,8 +348,8 @@ class Inout:
     ## function for polling data from the target and triggering writing to log file if set
     #
     def pollTargetData(self):
-        from pymodbus.payload import BinaryPayloadDecoder
-        from pymodbus.constants import Endian
+        if not pymodbus_version == "310+":
+            from pymodbus.payload import BinaryPayloadDecoder
         import datetime
 
         data.datavector = [] ## empty datavector for current values
@@ -356,39 +363,74 @@ class Inout:
                     received = self.client.read_input_registers(address = int(thisrow[0]),
                                                         count = data.moddatatype[thisrow[1]],
                                                         unit = data.modbusid)
-                else:
+                elif not pymodbus_version == "310+": # "slave" was again changed in 3.10.0
                     received = self.client.read_input_registers(address = int(thisrow[0]),
                                                         count = data.moddatatype[thisrow[1]],
                                                         slave = data.modbusid)
+                else:
+                    received = self.client.read_input_registers(address = int(thisrow[0]),
+                                                            count     = data.moddatatype[thisrow[1]],
+                                                            device_id = data.modbusid)
 
             except:
                 thisdate = str(datetime.datetime.now()).partition('.')[0]
-                thiserrormessage = thisdate + ': Connection not possible. Check settings or connection.'
+                thiserrormessage = f"{thisdate}: Connection not possible. Check settings or connection."
                 if (gui_active):
                     messagebox.showerror('Connection Error',thiserrormessage)
                     return  ## prevent further execution of this function
                 else:
                     print(thiserrormessage)
                     return  ## prevent further execution of this function
-
-            message = BinaryPayloadDecoder.fromRegisters(received.registers, byteorder=Endian.Big, wordorder=Endian.Big)
-            ## provide the correct result depending on the defined datatype
-            if thisrow[1] == 'S32':
-                interpreted = message.decode_32bit_int()
-            elif thisrow[1] == 'U32':
-                interpreted = message.decode_32bit_uint()
-            elif thisrow[1] == 'U64':
-                interpreted = message.decode_64bit_uint()
-            elif thisrow[1] == 'STR32':
-                interpreted = message.decode_string(32).decode("utf-8").strip('\x00') ## convert bytes to str
-            elif thisrow[1] == 'STR24': ## workaround when SMA shorted the length of a string register to 24 bytes
-                interpreted = message.decode_string(24).decode("utf-8").strip('\x00') ## convert bytes to str
-            elif thisrow[1] == 'S16':
-                interpreted = message.decode_16bit_int()
-            elif thisrow[1] == 'U16':
-                interpreted = message.decode_16bit_uint()
-            else: ## if no data type is defined do raw interpretation of the delivered data
-                interpreted = message.decode_16bit_uint()
+            if not pymodbus_version == "310+":
+                message = BinaryPayloadDecoder.fromRegisters(received.registers, byteorder=Endian.Big, wordorder=Endian.Big)
+                ## provide the correct result depending on the defined datatype
+                if thisrow[1] == 'S32':
+                    interpreted = message.decode_32bit_int()
+                elif thisrow[1] == 'U32':
+                    interpreted = message.decode_32bit_uint()
+                elif thisrow[1] == 'U64':
+                    interpreted = message.decode_64bit_uint()
+                elif thisrow[1] == 'STR32':
+                    interpreted = message.decode_string(32).decode("utf-8").strip('\x00') ## convert bytes to str
+                elif thisrow[1] == 'STR24': ## workaround when SMA shorted the length of a string register to 24 bytes
+                    interpreted = message.decode_string(24).decode("utf-8").strip('\x00') ## convert bytes to str
+                elif thisrow[1] == 'S16':
+                    interpreted = message.decode_16bit_int()
+                elif thisrow[1] == 'U16':
+                    interpreted = message.decode_16bit_uint()
+                else: ## if no data type is defined do raw interpretation of the delivered data
+                    interpreted = message.decode_16bit_uint()
+            else: ## data handling with pymodbus ≥ 3.10.0 
+                if thisrow[1] == 'S32':
+                    interpreted = self.client.convert_from_registers(received.registers,
+                                                                     data_type=self.client.DATATYPE.INT32,
+                                                                     word_order="big")
+                elif thisrow[1] == 'U32':
+                    interpreted = self.client.convert_from_registers(received.registers,
+                                                                     data_type=self.client.DATATYPE.UINT32,
+                                                                     word_order="big")
+                elif thisrow[1] == 'U64':
+                    interpreted = self.client.convert_from_registers(received.registers,
+                                                                     data_type=self.client.DATATYPE.UINT64,
+                                                                     word_order="big")
+                elif thisrow[1] == 'STR32':
+                    raw_bytes = b''.join(r.to_bytes(2) for r in received.registers[:16])
+                    interpreted = raw_bytes.decode('utf-8').strip('\x00') ## convert bytes to str
+                elif thisrow[1] == 'STR24': ## workaround when SMA shorted the length of a string register to 24 bytes
+                    raw_bytes = b''.join(r.to_bytes(2) for r in received.registers[:12])
+                    interpreted = raw_bytes.decode('utf-8').strip('\x00') ## convert bytes to str
+                elif thisrow[1] == 'S16':
+                    interpreted = self.client.convert_from_registers(received.registers,
+                                                                     data_type=self.client.DATATYPE.INT16,
+                                                                     word_order="big")
+                elif thisrow[1] == 'U16':
+                    interpreted = self.client.convert_from_registers(received.registers,
+                                                                     data_type=self.client.DATATYPE.UINT16,
+                                                                     word_order="big")
+                else: ## if no data type is defined do raw interpretation of the delivered data
+                    interpreted = self.client.convert_from_registers(received.registers,
+                                                                     data_type=self.client.DATATYPE.UINT16,
+                                                                     word_order="big")
 
             ## check for "None" data before doing anything else
             if ((interpreted == self.MIN_SIGNED) or (interpreted == self.MAX_UNSIGNED)):
